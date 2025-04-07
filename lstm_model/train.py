@@ -34,7 +34,7 @@ def main():
     num_classes = len(np.unique(y_train))
     
     # Get accident type names from preprocessing info
-    accident_types = preprocessing_info['label_mapping'].values()
+    accident_types = list(preprocessing_info['label_mapping'].values())
     if not accident_types:
         accident_types = ['LOCA', 'SGBTR', 'LR', 'MD', 'SGATR', 'SLBIC', 
                          'LOCAC', 'RI', 'FLB', 'LLB', 'SLBOC', 'RW']

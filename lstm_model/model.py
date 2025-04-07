@@ -17,32 +17,70 @@ class NuclearAccidentClassifier:
         self.model = self._build_model()
         
     def _build_model(self):
-        """Build a hybrid LSTM-GRU model for nuclear accident classification"""
-        model = models.Sequential([
-            # First LSTM layer with dropout
-            layers.LSTM(128, return_sequences=True, input_shape=self.input_shape),
-            layers.Dropout(0.3),
-            layers.BatchNormalization(),
-            
-            # GRU layer
-            layers.GRU(64, return_sequences=True),
-            layers.Dropout(0.3),
-            layers.BatchNormalization(),
-            
-            # Second LSTM layer
-            layers.LSTM(32),
-            layers.Dropout(0.3),
-            layers.BatchNormalization(),
-            
-            # Dense layers
-            layers.Dense(64, activation='relu'),
-            layers.Dropout(0.3),
-            layers.Dense(self.num_classes, activation='softmax')
-        ])
+        """Build an improved hybrid LSTM-GRU model with bidirectional layers and attention"""
         
-        # Compile the model
+        # Input layer
+        inputs = layers.Input(shape=self.input_shape)
+        
+        # First Bidirectional LSTM layer
+        x = layers.Bidirectional(
+            layers.LSTM(160, return_sequences=True, kernel_regularizer=tf.keras.regularizers.l2(1e-5))
+        )(inputs)
+        x = layers.BatchNormalization()(x)
+        x = layers.Dropout(0.35)(x)
+        
+        # Bidirectional GRU layer
+        x = layers.Bidirectional(
+            layers.GRU(96, return_sequences=True, kernel_regularizer=tf.keras.regularizers.l2(1e-5))
+        )(x)
+        x = layers.BatchNormalization()(x)
+        x = layers.Dropout(0.35)(x)
+        
+        # Attention mechanism
+        attention = layers.Dense(1, activation='tanh')(x)
+        attention = layers.Flatten()(attention)
+        attention = layers.Activation('softmax')(attention)
+        attention = layers.RepeatVector(192)(attention)  # 96*2 (bidirectional output dim)
+        attention = layers.Permute([2, 1])(attention)
+        
+        # Apply attention to GRU output
+        x = layers.Multiply()([x, attention])
+        x = layers.Lambda(lambda x: tf.reduce_sum(x, axis=1))(x)
+        
+        # Second LSTM layer (reduced size)
+        x = layers.Reshape((1, 192))(x)
+        x = layers.LSTM(64, kernel_regularizer=tf.keras.regularizers.l2(1e-5))(x)
+        x = layers.BatchNormalization()(x)
+        x = layers.Dropout(0.35)(x)
+        
+        # Dense layers with increased depth
+        x = layers.Dense(96, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(1e-5))(x)
+        x = layers.BatchNormalization()(x)
+        x = layers.Dropout(0.35)(x)
+        
+        x = layers.Dense(48, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(1e-5))(x)
+        x = layers.BatchNormalization()(x)
+        x = layers.Dropout(0.25)(x)
+        
+        # Output layer
+        outputs = layers.Dense(self.num_classes, activation='softmax')(x)
+        
+        # Create model
+        model = models.Model(inputs=inputs, outputs=outputs)
+        
+        # Custom learning rate schedule with warmup
+        lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
+            initial_learning_rate=0.001,
+            decay_steps=10000,
+            alpha=0.1
+        )
+        
+        # Compile with Adam optimizer and gradient clipping
         model.compile(
-            optimizer='adam',
+            optimizer=tf.keras.optimizers.Adam(
+                learning_rate=lr_schedule, 
+                clipnorm=1.0
+            ),
             loss='sparse_categorical_crossentropy',
             metrics=['accuracy']
         )
@@ -50,21 +88,58 @@ class NuclearAccidentClassifier:
         return model
     
     def train(self, X_train, y_train, X_val, y_val, epochs=100, batch_size=32):
-        """Train the model with early stopping and model checkpointing"""
+        """Train the model with advanced callbacks and techniques"""
+        # Create directories
+        os.makedirs(self.model_path, exist_ok=True)
+        log_dir = os.path.join(self.model_path, "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        
         # Create callbacks
         callbacks = [
+            # Early stopping with more patience
             EarlyStopping(
                 monitor='val_loss',
-                patience=10,
-                restore_best_weights=True
+                patience=15,
+                restore_best_weights=True,
+                verbose=1
             ),
+            # Model checkpoint for best validation accuracy
             ModelCheckpoint(
                 filepath=os.path.join(self.model_path, 'best_model.h5'),
                 monitor='val_accuracy',
                 save_best_only=True,
-                mode='max'
+                mode='max',
+                verbose=1
+            ),
+            # Reduce learning rate when progress stalls
+            tf.keras.callbacks.ReduceLROnPlateau(
+                monitor='val_loss',
+                factor=0.5,
+                patience=5,
+                min_lr=1e-6,
+                verbose=1
+            ),
+            # TensorBoard logging
+            tf.keras.callbacks.TensorBoard(
+                log_dir=log_dir,
+                histogram_freq=1,
+                write_graph=True
             )
         ]
+        
+        # Train the model with class weights to handle imbalanced data
+        # Calculate class weights
+        class_weights = {}
+        total_samples = len(y_train)
+        n_classes = self.num_classes
+        
+        for i in range(n_classes):
+            class_count = np.sum(y_train == i)
+            if class_count > 0:  # Avoid division by zero
+                # Balanced weighting formula
+                class_weights[i] = total_samples / (n_classes * class_count)
+            else:
+                class_weights[i] = 1.0
         
         # Train the model
         history = self.model.fit(
@@ -73,47 +148,90 @@ class NuclearAccidentClassifier:
             epochs=epochs,
             batch_size=batch_size,
             callbacks=callbacks,
+            class_weight=class_weights,
             verbose=1
         )
         
         return history
     
     def evaluate(self, X_test, y_test):
-        """Evaluate the model on test data with multiple metrics"""
+        """Evaluate the model with comprehensive metrics and per-class analysis"""
         # Get predictions
         y_pred_proba = self.model.predict(X_test)
         y_pred_classes = np.argmax(y_pred_proba, axis=1)
         
-        # Calculate accuracy
+        # Calculate overall metrics
         accuracy = accuracy_score(y_test, y_pred_classes)
-        print(f"\nAccuracy: {accuracy:.4f}")
-        
-        # Calculate F1 score (weighted for class imbalance)
-        f1 = f1_score(y_test, y_pred_classes, average='weighted')
-        print(f"F1 Score (weighted): {f1:.4f}")
+        f1_weighted = f1_score(y_test, y_pred_classes, average='weighted')
+        f1_macro = f1_score(y_test, y_pred_classes, average='macro')
         
         # Calculate precision and recall
-        precision = precision_score(y_test, y_pred_classes, average='weighted')
-        recall = recall_score(y_test, y_pred_classes, average='weighted')
-        print(f"Precision (weighted): {precision:.4f}")
-        print(f"Recall (weighted): {recall:.4f}")
+        precision_weighted = precision_score(y_test, y_pred_classes, average='weighted', zero_division=0)
+        recall_weighted = recall_score(y_test, y_pred_classes, average='weighted', zero_division=0)
         
-        # Generate classification report
-        report = classification_report(y_test, y_pred_classes)
+        # Print overall metrics
+        print("\nOverall Performance Metrics:")
+        print(f"Accuracy: {accuracy:.4f}")
+        print(f"F1 Score (weighted): {f1_weighted:.4f}")
+        print(f"F1 Score (macro): {f1_macro:.4f}")
+        print(f"Precision (weighted): {precision_weighted:.4f}")
+        print(f"Recall (weighted): {recall_weighted:.4f}")
+        
+        # Generate detailed classification report
+        report = classification_report(y_test, y_pred_classes, zero_division=0)
         
         # Generate confusion matrix
         cm = confusion_matrix(y_test, y_pred_classes)
         
-        # Save metrics to file
+        # Per-class metrics
+        per_class_metrics = {}
+        classes = np.unique(y_test)
+        
+        for cls in classes:
+            # Binary mask for this class
+            y_true_cls = (y_test == cls)
+            y_pred_cls = (y_pred_classes == cls)
+            
+            # Per-class statistics
+            TP = np.sum((y_true_cls) & (y_pred_cls))
+            FP = np.sum((~y_true_cls) & (y_pred_cls))
+            FN = np.sum((y_true_cls) & (~y_pred_cls))
+            TN = np.sum((~y_true_cls) & (~y_pred_cls))
+            
+            # Compute metrics, handling division by zero
+            cls_precision = TP / (TP + FP) if (TP + FP) > 0 else 0
+            cls_recall = TP / (TP + FN) if (TP + FN) > 0 else 0
+            cls_f1 = 2 * (cls_precision * cls_recall) / (cls_precision + cls_recall) if (cls_precision + cls_recall) > 0 else 0
+            cls_specificity = TN / (TN + FP) if (TN + FP) > 0 else 0
+            
+            # Store metrics
+            per_class_metrics[int(cls)] = {
+                'precision': float(cls_precision),
+                'recall': float(cls_recall),
+                'f1_score': float(cls_f1),
+                'specificity': float(cls_specificity),
+                'support': int(np.sum(y_true_cls))
+            }
+        
+        # Save all metrics to file
         metrics = {
-            'accuracy': float(accuracy),
-            'f1_score': float(f1),
-            'precision': float(precision),
-            'recall': float(recall)
+            'overall': {
+                'accuracy': float(accuracy),
+                'f1_score_weighted': float(f1_weighted),
+                'f1_score_macro': float(f1_macro),
+                'precision_weighted': float(precision_weighted),
+                'recall_weighted': float(recall_weighted)
+            },
+            'per_class': per_class_metrics
         }
         
         with open(os.path.join(self.model_path, 'metrics.json'), 'w') as f:
             json.dump(metrics, f, indent=4)
+        
+        # Save prediction probabilities for further analysis
+        np.save(os.path.join(self.model_path, 'y_pred_proba.npy'), y_pred_proba)
+        np.save(os.path.join(self.model_path, 'y_pred_classes.npy'), y_pred_classes)
+        np.save(os.path.join(self.model_path, 'y_test.npy'), y_test)
             
         return report, cm, y_pred_proba, metrics
     
