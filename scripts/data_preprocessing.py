@@ -107,13 +107,7 @@ def create_windows(data, window_size=WINDOW_SIZE, overlap=OVERLAP):
     for sample in data:
         # Check if sample has enough time steps
         if len(sample) < window_size:
-            # If sample is too short, pad with zeros or skip
-            print(f"WARNING: Sample with {len(sample)} time steps is shorter than window size {window_size}")
-            # For very short samples, we could pad with zeros, but we'll skip for simplicity
-            if len(sample) < window_size / 2:
-                continue
-            
-            # Pad with zeros if at least half the window size
+            # Pad with zeros to reach window_size
             padding = np.zeros((window_size - len(sample), sample.shape[1]))
             padded_sample = np.vstack([sample, padding])
             windows.append(padded_sample)
@@ -132,7 +126,10 @@ def create_windows(data, window_size=WINDOW_SIZE, overlap=OVERLAP):
             window = sample[start_idx:end_idx]
             windows.append(window)
     
-    return np.array(windows)
+    # Convert to numpy array with shape (n_windows, window_size, n_features)
+    windows_array = np.array(windows)
+    print(f"Window shape: {windows_array.shape}")
+    return windows_array
 
 def preprocess_all_data(top_params=None):
     """Preprocess data for all accident types"""
