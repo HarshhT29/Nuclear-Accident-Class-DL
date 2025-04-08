@@ -1,182 +1,176 @@
 # Nuclear Power Plant Accident Classification
 
+This repository contains a machine learning project for classifying nuclear power plant accident types using time-series operational parameter data from the NPPAD dataset.
+
 ## Project Overview
 
-This project develops a deep learning-based accident classifier for nuclear power plants using the NPPAD dataset. The system analyzes time-series data of operational parameters to identify the type of accident occurring in the plant.
+Nuclear power plants require robust accident detection and classification systems to ensure safety and enable rapid response. This project develops a classification model that can identify 12 different accident types based on time-series operational parameter data.
 
 ### Dataset
 
-The NPPAD (Nuclear Power Plant Accident Dataset) contains simulations of 12 accident types:
-- LOCA (Loss of Coolant Accident)
-- SGTR (Steam Generator Tube Rupture)
-- MSLB (Main Steam Line Break)
-- LOFW (Loss of Feedwater)
-- LOOP (Loss of Offsite Power)
-- TMLB (Station Blackout)
-- SLOCA (Small Loss of Coolant Accident)
-- SLBO (Steam Line Break Outside)
-- RCP (Reactor Coolant Pump seizure)
-- LODCP (Loss of DC Power)
-- IISLOCA (Interfacing System LOCA)
-- LOHT (Loss of Heat Transfer)
+The Nuclear Power Plant Accident Dataset (NPPAD) contains:
+- 12 accident types with 100 simulations per type
+- Each simulation includes time-series data with ~97 operational parameters
+- Data collected at 10-second intervals
+- Parameters include pressure, temperature, flow rates, etc.
 
-Each accident type has 100 simulations of varying severity levels. Each simulation consists of:
-1. A CSV file with ~97 operational parameters recorded at 10-second intervals
-2. A TransientReport.txt file describing subsystem actions during the simulation
+## Implementation Plan
 
-## One-Day Implementation Plan
+The project follows a structured implementation plan:
 
-This repository contains a condensed implementation of an LSTM/GRU model that can be completed in a single day. The implementation follows this step-by-step approach:
+1. **Data Exploration**: Understanding the dataset characteristics
+2. **Data Preprocessing**: Normalizing parameters, handling missing values
+3. **Model Development**: Building and refining the model architecture
+4. **Model Evaluation**: Comprehensive performance assessment
+5. **Documentation**: Clear explanation of implementation details
 
-### Morning (First 4 Hours)
-1. Data Setup & Exploration
-2. Data Preprocessing
-
-### Afternoon (Next 4 Hours)
-3. Model Implementation
-4. Training & Validation
-5. Refinement & Evaluation
-6. Documentation
+For a detailed implementation plan, see [lstm_gru_implementation_plan.md](lstm_gru_implementation_plan.md)
 
 ## Project Structure
 
 ```
-.
-├── README.md                          # Project overview and setup instructions
-├── scripts/                           # Python implementation scripts
-│   ├── data_exploration.py            # Script for exploring the NPPAD dataset
-│   └── data_preprocessing.py          # Script for preprocessing the data
-├── docs/                              # Documentation files
-│   ├── data_exploration_explanation.md # Detailed explanation of exploration script
-│   └── data_preprocessing_explanation.md # Detailed explanation of preprocessing script
-├── exploration_results/               # Output directory for exploration results
-│   ├── parameter_statistics.csv       # Statistics for all parameters
-│   ├── top_parameters.txt             # Ranked list of most distinctive parameters
-│   └── *.png                          # Visualizations of key parameters
-├── processed_data/                    # Preprocessed data for model training
-│   ├── X_train.npy                    # Training features
-│   ├── y_train.npy                    # Training labels
-│   ├── X_val.npy                      # Validation features
-│   ├── y_val.npy                      # Validation labels
-│   ├── X_test.npy                     # Test features
-│   ├── y_test.npy                     # Test labels
-│   ├── meta_*.json                    # Metadata for each split
-│   ├── scaler.pkl                     # Fitted scaler for normalization
-│   └── preprocessing_info.json        # Documentation of preprocessing settings
-└── NPPAD/                             # The original dataset (not included in repo)
-    ├── LOCA/                          # Accident type folders
-    │   ├── 1.csv                      # Simulation data
-    │   ├── 1TransientReport.txt       # Simulation report
-    │   └── ...
-    ├── SGTR/
-    └── ...
+project/
+├── data_exploration/         # Scripts for exploring the dataset
+│   └── explore_data.py       # Data exploration script
+├── data_preprocessing/       # Scripts for preprocessing the data
+│   └── preprocess_data.py    # Data preprocessing script
+├── lstm_model/               # LSTM/GRU model implementation
+│   ├── model.py              # Model architecture definition
+│   ├── train.py              # Model training script
+│   └── saved_model/          # Directory for saved models and results
+├── docs/                     # Documentation
+│   ├── data_exploration_explanation.md    # Data exploration details
+│   ├── data_preprocessing_explanation.md  # Preprocessing details
+│   └── lstm_model_explanation.md          # Model implementation details
+├── NPPAD/                    # Dataset directory (not included in repo)
+└── README.md                 # Project overview
 ```
 
-## Setup and Installation
+## Setup Instructions
 
 ### Prerequisites
 
 - Python 3.8+
-- TensorFlow 2.x
-- NumPy
-- Pandas
-- Scikit-learn
-- Matplotlib
-- Seaborn
+- Required packages listed in requirements.txt
 
 ### Installation
 
 1. Clone this repository:
-   ```bash
-   git clone https://github.com/yourusername/nuclear-accident-classification.git
+   ```
+   git clone https://github.com/username/nuclear-accident-classification.git
    cd nuclear-accident-classification
    ```
 
 2. Install dependencies:
-   ```bash
+   ```
    pip install -r requirements.txt
    ```
 
-3. Prepare the NPPAD dataset:
-   - Place the NPPAD dataset in the root directory, maintaining its structure
-   - Ensure each accident type folder contains its respective simulation files
+3. Download the NPPAD dataset and place it in the 'NPPAD' directory
 
 ## Usage
 
-### 1. Data Exploration (Hour 1)
+### Data Exploration
 
-Run the data exploration script to analyze the dataset and identify key parameters:
-
-```bash
-python scripts/data_exploration.py
+To explore the dataset characteristics:
+```
+python data_exploration/explore_data.py
 ```
 
-This will:
-- Verify dataset integrity
-- Calculate statistics for all parameters
-- Identify the most distinctive parameters
-- Create visualizations of key patterns
-- Save results to the `exploration_results` directory
+### Data Preprocessing
 
-### 2. Data Preprocessing (Hour 2)
-
-Preprocess the data to prepare it for model training:
-
-```bash
-python scripts/data_preprocessing.py
+To preprocess the raw data:
+```
+python data_preprocessing/preprocess_data.py
 ```
 
-This will:
-- Create standardized, windowed data from the raw time-series
-- Split data into training, validation, and test sets
-- Apply normalization
-- Save processed data to the `processed_data` directory
+### Model Training
 
-### 3. Model Implementation (Future Hours)
+To train the enhanced bidirectional LSTM-GRU model:
+```
+python lstm_model/train.py
+```
 
-The subsequent scripts for model implementation, training, and evaluation will be developed in Hours 3-8 of the one-day plan.
+The script will:
+1. Load preprocessed data
+2. Build the hybrid model with bidirectional layers and attention
+3. Train with automatic class weighting and advanced callbacks
+4. Evaluate performance with comprehensive metrics
+5. Save model artifacts and visualizations to `lstm_model/saved_model/`
+
+## Model Architecture
+
+Our current implementation features an enhanced hybrid architecture:
+
+### Key Components
+
+- **Bidirectional Layers**: Captures context from both past and future states
+  - Bidirectional LSTM (160 units) with L2 regularization
+  - Bidirectional GRU (96 units) with L2 regularization
+
+- **Attention Mechanism**: Custom attention layer that focuses on critical time points
+
+- **Advanced Regularization**:
+  - L2 weight regularization
+  - Increased dropout rates (0.35)
+  - Batch normalization
+
+- **Learning Rate Scheduling**:
+  - Cosine decay schedule
+  - Learning rate reduction on plateau
+
+- **Class Imbalance Handling**:
+  - Automatic class weighting based on sample distribution
+
+### Training Process
+
+- Early stopping with increased patience (15 epochs)
+- Model checkpointing based on validation accuracy
+- TensorBoard integration for visualization
+- Gradient clipping to prevent exploding gradients
+
+### Evaluation Metrics
+
+The model is evaluated using:
+- Overall accuracy
+- Weighted and macro F1 scores
+- Per-class precision, recall, and F1 scores
+- Normalized confusion matrix
+- ROC and precision-recall curves
 
 ## Project Goals
 
-1. Develop a working prototype of an LSTM/GRU-based classifier
-2. Achieve classification accuracy better than random guessing
-3. Understand model performance across different accident types
-4. Identify areas for future improvement
+1. Develop a working prototype for nuclear accident classification
+2. Achieve high classification accuracy across all accident types
+3. Provide interpretable model insights through attention visualization
+4. Create a foundation for future development of more advanced models
 
 ## Future Improvements
 
-For a more comprehensive implementation beyond the one-day scope:
-- Implement more complex architectures (transformers, CNN-LSTM hybrids)
-- Add attention mechanisms for better interpretability
-- Conduct more extensive hyperparameter tuning
-- Develop a deployment pipeline for real-time classification
+1. **Ensemble Methods**: Combining multiple model architectures
+2. **Transfer Learning**: Pretraining on related time-series data
+3. **Advanced Architectures**: Testing transformer-based models
+4. **Deployment Pipeline**: Creating a robust inference system
+5. **Interpretability Enhancements**: Advanced attention visualization
 
 ## License
 
-This project is provided for educational purposes only. The NPPAD dataset should be used according to its original licensing terms.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Acknowledgments
 
-- The NPPAD dataset providers for enabling nuclear accident research
-- The nuclear safety community for advancing accident detection and prevention techniques
+- The NPPAD dataset providers
+- Contributors to this project
+- Nuclear power plant safety research community
 
 ## Data Preprocessing
 
-The preprocessed data files are not included in this repository due to size limitations. To generate these files:
+The data preprocessing pipeline includes:
 
-1. Run the data exploration script:
-   ```bash
-   python scripts/data_exploration.py
-   ```
+1. **Normalization**: Z-score normalization of all parameters
+2. **Missing Value Handling**: Forward fill followed by zero imputation
+3. **Sequence Windowing**: Fixed-length windows with appropriate overlap
+4. **Train/Val/Test Split**: 70% training, 15% validation, 15% test with stratification
+5. **One-Hot Encoding**: For categorical variables
 
-2. Run the data preprocessing script:
-   ```bash
-   python scripts/data_preprocessing.py
-   ```
-
-This will create the following files in the `processed_data/` directory:
-- `X_train.npy`, `y_train.npy` - Training data
-- `X_val.npy`, `y_val.npy` - Validation data
-- `X_test.npy`, `y_test.npy` - Test data
-- `scaler.pkl` - Fitted StandardScaler object
-- `preprocessing_info.json` - Preprocessing configuration and statistics 
+For detailed information on preprocessing steps, see [data_preprocessing_explanation.md](docs/data_preprocessing_explanation.md). 

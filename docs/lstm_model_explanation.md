@@ -10,143 +10,216 @@ This document explains the implementation of a hybrid LSTM-GRU (Long Short-Term 
 - Each sequence represents a window of parameter measurements
 - Features are preprocessed and normalized values from the nuclear plant parameters
 
-### 2. LSTM-GRU Hybrid Architecture
-The model uses a combination of LSTM and GRU layers to capture both long-term and short-term dependencies:
+### 2. Advanced LSTM-GRU Hybrid Architecture
+The model uses a sophisticated combination of bidirectional LSTM and GRU layers with attention mechanisms and regularization:
 
-#### First LSTM Layer
+#### First Bidirectional LSTM Layer
 ```python
-layers.LSTM(128, return_sequences=True, input_shape=self.input_shape)
-layers.Dropout(0.3)
+layers.Bidirectional(
+    layers.LSTM(160, return_sequences=True, kernel_regularizer=tf.keras.regularizers.l2(1e-5))
+)(inputs)
 layers.BatchNormalization()
+layers.Dropout(0.35)
 ```
-- 128 units with return sequences enabled
-- Captures long-term dependencies in the data
-- Dropout (0.3) prevents overfitting
-- Batch normalization stabilizes training
+- 160 units with bidirectional processing (total 320 units)
+- L2 regularization to prevent overfitting
+- Captures long-term dependencies from both past and future states
+- Higher dropout rate (0.35) for improved regularization
+- Batch normalization for training stability
 
-#### GRU Layer
+#### Bidirectional GRU Layer
 ```python
-layers.GRU(64, return_sequences=True)
-layers.Dropout(0.3)
+layers.Bidirectional(
+    layers.GRU(96, return_sequences=True, kernel_regularizer=tf.keras.regularizers.l2(1e-5))
+)(x)
 layers.BatchNormalization()
+layers.Dropout(0.35)
 ```
-- 64 units with return sequences enabled
+- 96 units with bidirectional processing (total 192 units)
 - Efficiently captures medium-term dependencies
-- Dropout and batch normalization for regularization
+- L2 regularization for weight sparsity
+- Further dropout and normalization for robust training
 
-#### Second LSTM Layer
+#### Attention Mechanism
 ```python
-layers.LSTM(32)
-layers.Dropout(0.3)
-layers.BatchNormalization()
+attention = layers.Dense(1, activation='tanh')(x)
+attention = layers.Flatten()(attention)
+attention = layers.Activation('softmax')(attention)
+attention = layers.RepeatVector(192)(attention)
+attention = layers.Permute([2, 1])(attention)
+x = layers.Multiply()([x, attention])
+x = layers.Lambda(lambda x: tf.reduce_sum(x, axis=1))(x)
 ```
-- 32 units without return sequences
-- Final sequence processing layer
-- Further dropout and normalization
+- Learns to focus on the most relevant time steps
+- Applies attention weights to GRU outputs
+- Improves model interpretability
+- Enhances classification performance on complex sequences
 
-#### Dense Layers
+#### Deep Feed-Forward Layers
 ```python
-layers.Dense(64, activation='relu')
-layers.Dropout(0.3)
-layers.Dense(self.num_classes, activation='softmax')
+x = layers.Dense(96, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(1e-5))(x)
+x = layers.BatchNormalization()(x)
+x = layers.Dropout(0.35)(x)
+
+x = layers.Dense(48, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(1e-5))(x)
+x = layers.BatchNormalization()(x)
+x = layers.Dropout(0.25)(x)
 ```
-- Intermediate dense layer with ReLU activation
-- Final classification layer with softmax activation
-- Number of output classes equals number of accident types
+- Deeper network with gradually decreasing dimensions
+- L2 regularization applied throughout
+- Multiple batch normalization layers
+- Carefully tuned dropout rates for each layer
 
-### 3. Model Compilation
+### 3. Advanced Model Compilation
 ```python
+# Custom learning rate schedule with warmup
+lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
+    initial_learning_rate=0.001,
+    decay_steps=10000,
+    alpha=0.1
+)
+
+# Compile with Adam optimizer and gradient clipping
 model.compile(
-    optimizer='adam',
+    optimizer=tf.keras.optimizers.Adam(
+        learning_rate=lr_schedule, 
+        clipnorm=1.0
+    ),
     loss='sparse_categorical_crossentropy',
     metrics=['accuracy']
 )
 ```
-- Adam optimizer for adaptive learning rates
-- Sparse categorical crossentropy loss for multi-class classification
-- Accuracy metric for monitoring training progress
+- Cosine decay learning rate schedule for better convergence
+- Gradient clipping to prevent exploding gradients
+- Advanced Adam optimizer configuration
+- Maintains sparse categorical crossentropy for efficient training
 
 ## Training Process
 
-### 1. Data Loading
+### 1. Advanced Data Loading
 - Loads preprocessed data from `processed_data/` directory
 - Splits into training, validation, and test sets
 - Maintains data shapes and normalization
 
-### 2. Training Configuration
+### 2. Enhanced Training Configuration
 ```python
 callbacks = [
+    # Early stopping with more patience
     EarlyStopping(
         monitor='val_loss',
-        patience=10,
-        restore_best_weights=True
+        patience=15,
+        restore_best_weights=True,
+        verbose=1
     ),
+    # Model checkpoint for best validation accuracy
     ModelCheckpoint(
-        filepath='best_model.h5',
+        filepath=os.path.join(self.model_path, 'best_model.h5'),
         monitor='val_accuracy',
         save_best_only=True,
-        mode='max'
+        mode='max',
+        verbose=1
+    ),
+    # Reduce learning rate when progress stalls
+    tf.keras.callbacks.ReduceLROnPlateau(
+        monitor='val_loss',
+        factor=0.5,
+        patience=5,
+        min_lr=1e-6,
+        verbose=1
+    ),
+    # TensorBoard logging
+    tf.keras.callbacks.TensorBoard(
+        log_dir=log_dir,
+        histogram_freq=1,
+        write_graph=True
     )
 ]
 ```
-- Early stopping prevents overfitting
-- Model checkpointing saves best weights
-- 100 epochs maximum with batch size of 32
+- More sophisticated early stopping with increased patience
+- Improved model checkpointing
+- Dynamic learning rate reduction
+- TensorBoard integration for monitoring
+- Verbose progress tracking
 
-### 3. Training Execution
+### 3. Class Weight Balancing
 ```python
-history = model.fit(
+# Calculate class weights
+class_weights = {}
+total_samples = len(y_train)
+n_classes = self.num_classes
+
+for i in range(n_classes):
+    class_count = np.sum(y_train == i)
+    if class_count > 0:  # Avoid division by zero
+        # Balanced weighting formula
+        class_weights[i] = total_samples / (n_classes * class_count)
+    else:
+        class_weights[i] = 1.0
+```
+- Handles class imbalance automatically
+- Gives more weight to underrepresented accident types
+- Improves performance on rare accident scenarios
+
+### 4. Training Execution
+```python
+history = self.model.fit(
     X_train, y_train,
     validation_data=(X_val, y_val),
     epochs=epochs,
     batch_size=batch_size,
     callbacks=callbacks,
+    class_weight=class_weights,
     verbose=1
 )
 ```
-- Trains on training data
-- Validates on validation set
-- Monitors loss and accuracy
+- Leverages class weights for balanced training
+- Uses all advanced callbacks
+- Handles up to 100 epochs with intelligent early stopping
 
-## Evaluation and Visualization
+## Comprehensive Evaluation
 
-### 1. Model Evaluation
+### 1. Enhanced Model Evaluation
 - Generates predictions on test set
-- Calculates classification metrics
-- Creates confusion matrix
+- Calculates multiple classification metrics:
+  - Overall accuracy
+  - Weighted and macro F1 scores
+  - Precision and recall metrics
+  - Per-class performance statistics
+- Creates standard and normalized confusion matrices
 
-### 2. Visualization Tools
+### 2. Advanced Visualization Tools
 - Training history plots (accuracy and loss)
-- Confusion matrix heatmap
-- Classification report with precision, recall, and F1-score
+- Confusion matrix heatmaps (raw and normalized)
+- ROC curves for each accident type
+- Precision-recall curves
+- Class distribution visualization
 
-### 3. Saved Outputs
-- Trained model weights
-- Model configuration
-- Training history plots
-- Confusion matrix
-- Classification report
+### 3. Detailed Output Analysis
+- Per-class metrics (precision, recall, F1, specificity)
+- Support values for each class
+- Global and per-class performance summaries
+- Saved prediction probabilities for further analysis
 
 ## Model Saving and Loading
 
-### 1. Saving Model
+### 1. Comprehensive Model Saving
 ```python
-model.save(os.path.join(self.model_path, 'model.h5'))
-```
-- Saves model weights
-- Saves configuration
-- Creates necessary directories
+# Save model weights
+self.model.save(os.path.join(self.model_path, 'model.h5'))
 
-### 2. Loading Model
-```python
-@classmethod
-def load_model(cls, model_path):
-    # Load configuration and weights
-    # Recreate model instance
+# Save evaluation metrics
+with open(os.path.join(self.model_path, 'metrics.json'), 'w') as f:
+    json.dump(metrics, f, indent=4)
+
+# Save prediction probabilities for further analysis
+np.save(os.path.join(self.model_path, 'y_pred_proba.npy'), y_pred_proba)
+np.save(os.path.join(self.model_path, 'y_pred_classes.npy'), y_pred_classes)
+np.save(os.path.join(self.model_path, 'y_test.npy'), y_test)
 ```
-- Loads saved configuration
-- Recreates model architecture
-- Loads saved weights
+- Saves model weights and configuration
+- Stores comprehensive evaluation metrics in JSON format
+- Preserves prediction probabilities for advanced analysis
+- Organized directory structure for all artifacts
 
 ## Usage
 
@@ -157,13 +230,14 @@ pip install -r requirements.txt
 
 2. Train the model:
 ```bash
-python train.py
+python lstm_model/train.py
 ```
 
 3. Monitor training progress:
-- Check training history plots
-- Review classification report
-- Analyze confusion matrix
+- View real-time training metrics
+- Check TensorBoard logs
+- Review generated visualizations
+- Analyze comprehensive metrics
 
 ## Dependencies
 - numpy >= 1.19.2
@@ -174,8 +248,8 @@ python train.py
 - pandas >= 1.3.0
 
 ## Notes
-- The model uses a hybrid architecture to capture different temporal dependencies
-- Early stopping and dropout prevent overfitting
-- Batch normalization stabilizes training
-- The model saves checkpoints for the best performing version
-- Comprehensive evaluation metrics help assess model performance 
+- The model uses a sophisticated bidirectional architecture with attention
+- Class weight balancing addresses dataset imbalance
+- Cosine decay learning rate schedule improves convergence
+- Comprehensive evaluation provides detailed performance insights
+- L2 regularization and higher dropout rates prevent overfitting 
